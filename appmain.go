@@ -71,8 +71,10 @@ func (app *App) OnError(f func(tc TaskContext) Decision) {
 }
 
 func (app *App) Run() (code int) {
-	var resultChan <-chan int
-	var onceSignalReceived bool
+	var (
+		resultChan  <-chan int
+		signalCount int
+	)
 	defer func() {
 		ctx := context.Background()
 		cleanupCtx, cancelCleanup := context.WithCancel(ctx)
@@ -89,23 +91,31 @@ func (app *App) Run() (code int) {
 				if code == 0 {
 					code = 1
 				}
-				// exit immediately when received signal multiple times.
-				if onceSignalReceived {
-					return
-				}
-				onceSignalReceived = true
+
+				// When this if block is executing, since resultChan it not nil,
+				// there was a cancel of either of main or init execution by signal.
+				// Therefore signalCount must be 1 and this is 2nd time of signal,
+				// so exit immediately without waiting cleanup result.
 				return
 			}
 		}
 
-		select {
-		case c := <-cleanupResult:
-			if c != 0 && code != 0 {
-				code = c
-			}
-		case <-app.sigChan:
-			if code == 0 {
-				code = 1
+		for {
+			select {
+			case c := <-cleanupResult:
+				if c != 0 && code == 0 {
+					code = c
+				}
+				return
+			case <-app.sigChan:
+				signalCount++
+				if signalCount >= 2 {
+					if code == 0 {
+						code = 1
+					}
+					return
+				}
+				cancelCleanup()
 			}
 		}
 	}()
@@ -122,7 +132,7 @@ func (app *App) Run() (code int) {
 			return c
 		}
 	case <-app.sigChan:
-		onceSignalReceived = true
+		signalCount++
 		cancelInit()
 		return 0
 	}
@@ -137,8 +147,8 @@ func (app *App) Run() (code int) {
 		resultChan = nil
 		return c
 	case <-app.sigChan:
+		signalCount++
 		cancelMain()
-		onceSignalReceived = true
 		return 0
 	}
 }
