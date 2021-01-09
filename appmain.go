@@ -41,20 +41,20 @@ func New() *App {
 	}
 }
 
-func (app *App) AddInitTask(name string, t Task) TaskContext {
-	return app.addTask(name, TaskTypeInit, t)
+func (app *App) AddInitTask(name string, t Task, opts ...TaskOption) TaskContext {
+	return app.addTask(name, TaskTypeInit, t, opts)
 }
 
-func (app *App) AddMainTask(name string, t Task) TaskContext {
-	return app.addTask(name, TaskTypeMain, t)
+func (app *App) AddMainTask(name string, t Task, opts ...TaskOption) TaskContext {
+	return app.addTask(name, TaskTypeMain, t, opts)
 }
 
-func (app *App) AddCleanupTask(name string, t Task) TaskContext {
-	return app.addTask(name, TaskTypeCleanup, t)
+func (app *App) AddCleanupTask(name string, t Task, opts ...TaskOption) TaskContext {
+	return app.addTask(name, TaskTypeCleanup, t, opts)
 }
 
-func (app *App) addTask(name string, tt TaskType, t Task) TaskContext {
-	r := newTask(name, tt, t)
+func (app *App) addTask(name string, tt TaskType, t Task, opts []TaskOption) TaskContext {
+	r := newTask(name, tt, t, opts)
 	app.tasks[tt] = append(app.tasks[tt], r)
 	return r
 }
@@ -203,20 +203,41 @@ type TaskContext interface {
 }
 
 type task struct {
-	name  string
-	ttype TaskType
-	task  Task
-	done  chan struct{}
-	err   error
+	name   string
+	ttype  TaskType
+	task   Task
+	done   chan struct{}
+	err    error
+	config *taskConfig
 }
 
-func newTask(name string, tt TaskType, t Task) *task {
+func newTask(name string, tt TaskType, t Task, opts []TaskOption) *task {
+	config := newTaskConfig(opts)
+	switch tt {
+	case TaskTypeInit:
+		for _, at := range config.after {
+			if at.Type() != TaskTypeInit {
+				panic(name + ": init task can run after only init task: " + at.Name())
+			}
+		}
+	case TaskTypeMain:
+		for _, at := range config.after {
+			switch at.Type() {
+			case TaskTypeInit:
+				panic(name + ": main task always run after init task: " + at.Name())
+			case TaskTypeCleanup:
+				panic(name + ": main task should start before cleanup task: " + at.Name())
+			}
+		}
+	}
+
 	return &task{
-		name:  name,
-		ttype: tt,
-		task:  t,
-		done:  make(chan struct{}),
-		err:   nil,
+		name:   name,
+		ttype:  tt,
+		task:   t,
+		done:   make(chan struct{}),
+		err:    nil,
+		config: newTaskConfig(opts),
 	}
 }
 
@@ -244,5 +265,34 @@ func (t *task) run(ctx context.Context) {
 		close(t.done)
 	}()
 
+	for _, at := range t.config.after {
+		select {
+		case <-at.Done():
+		case <-ctx.Done():
+			t.err = ctx.Err()
+			return
+		}
+	}
+
 	t.err = t.task(ctx)
+}
+
+type taskConfig struct {
+	after []TaskContext
+}
+
+func newTaskConfig(opts []TaskOption) *taskConfig {
+	c := new(taskConfig)
+	for _, o := range opts {
+		o(c)
+	}
+	return c
+}
+
+type TaskOption func(c *taskConfig)
+
+func RunAfter(tc TaskContext) TaskOption {
+	return func(c *taskConfig) {
+		c.after = append(c.after, tc)
+	}
 }
