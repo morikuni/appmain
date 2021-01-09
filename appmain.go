@@ -87,9 +87,9 @@ func (app *App) Run() (code int) {
 				if c != 0 && code != 0 {
 					code = c
 				}
-			case <-app.sigChan:
+			case sig := <-app.sigChan:
 				if code == 0 {
-					code = 1
+					code = signalCode(sig)
 				}
 
 				// When this if block is executing, since resultChan it not nil,
@@ -107,11 +107,11 @@ func (app *App) Run() (code int) {
 					code = c
 				}
 				return
-			case <-app.sigChan:
+			case sig := <-app.sigChan:
 				signalCount++
 				if signalCount >= 2 {
 					if code == 0 {
-						code = 1
+						code = signalCode(sig)
 					}
 					return
 				}
@@ -151,6 +151,15 @@ func (app *App) Run() (code int) {
 		cancelMain()
 		return 0
 	}
+}
+func signalCode(sig os.Signal) int {
+	s, ok := sig.(syscall.Signal)
+	if ok {
+		// It should exit with 128 + <signal code>.
+		// https://tldp.org/LDP/abs/html/exitcodes.html
+		return int(s) + 128
+	}
+	return 1
 }
 
 func (app *App) init(ctx context.Context) <-chan int {
