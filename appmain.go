@@ -10,17 +10,14 @@ import (
 )
 
 type App struct {
-	sigChan <-chan os.Signal
+	sigChan chan os.Signal
 	tasks   map[TaskType][]*task
 	onError func(TaskContext) Decision
 }
 
 func New() *App {
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
 	return &App{
-		sigChan: sigChan,
+		sigChan: nil,
 		tasks:   make(map[TaskType][]*task),
 		onError: func(tc TaskContext) Decision {
 			err := tc.Err()
@@ -62,7 +59,7 @@ func (app *App) addTask(name string, tt TaskType, t Task, opts []TaskOption) Tas
 type Decision int
 
 const (
-	Continue Decision = iota + 1
+	Continue Decision = iota
 	Exit
 )
 
@@ -70,7 +67,25 @@ func (app *App) OnError(f func(tc TaskContext) Decision) {
 	app.onError = f
 }
 
+func (app *App) ShutdownOnSignal(sigs ...os.Signal) {
+	if app.sigChan != nil {
+		signal.Stop(app.sigChan)
+	}
+	app.sigChan = make(chan os.Signal, 1)
+	signal.Notify(app.sigChan, sigs...)
+}
+
+func (app *App) SendSignal(sig os.Signal) {
+	if app.sigChan != nil {
+		app.sigChan <- sig
+	}
+}
+
 func (app *App) Run() (code int) {
+	if app.sigChan == nil {
+		app.ShutdownOnSignal(os.Interrupt, syscall.SIGTERM)
+	}
+
 	var (
 		resultChan  <-chan int
 		signalCount int
