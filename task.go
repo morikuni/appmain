@@ -57,7 +57,7 @@ func newTask(name string, tt TaskType, t Task, opts []TaskOption) *task {
 		task:   t,
 		done:   make(chan struct{}),
 		err:    nil,
-		config: newTaskConfig(opts),
+		config: config,
 	}
 }
 
@@ -89,5 +89,9 @@ func (t *task) run(ctx context.Context) {
 		<-at.Done()
 	}
 
-	t.err = t.config.interceptor(ctx, t, t.task)
+	if t.config.interceptor != nil {
+		t.err = t.config.interceptor(ctx, t, t.task)
+	} else {
+		t.err = t.task(ctx)
+	}
 }

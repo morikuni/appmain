@@ -1,6 +1,8 @@
 package appmain
 
-import "context"
+import (
+	"context"
+)
 
 type TaskOption func(c *taskConfig)
 
@@ -17,9 +19,9 @@ func newTaskConfig(opts []TaskOption) *taskConfig {
 	return c
 }
 
-func RunAfter(tc TaskContext) TaskOption {
+func RunAfter(tcs ...TaskContext) TaskOption {
 	return func(c *taskConfig) {
-		c.after = append(c.after, tc)
+		c.after = append(c.after, tcs...)
 	}
 }
 
@@ -27,7 +29,7 @@ type Interceptor func(context.Context, TaskContext, Task) error
 
 func Intercept(is ...Interceptor) TaskOption {
 	return func(c *taskConfig) {
-		if c.interceptor == nil {
+		if c.interceptor != nil {
 			is = append([]Interceptor{c.interceptor}, is...)
 		}
 		c.interceptor = joinInterceptors(is)
