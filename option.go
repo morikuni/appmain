@@ -4,7 +4,15 @@ import (
 	"context"
 )
 
-type TaskOption func(c *taskConfig)
+type TaskOption interface {
+	apply(c *taskConfig)
+}
+
+type taskOptionFunc func(c *taskConfig)
+
+func (f taskOptionFunc) apply(c *taskConfig) {
+	f(c)
+}
 
 type taskConfig struct {
 	after       []TaskContext
@@ -14,29 +22,28 @@ type taskConfig struct {
 func newTaskConfig(opts []TaskOption) *taskConfig {
 	c := new(taskConfig)
 	for _, o := range opts {
-		o(c)
+		o.apply(c)
 	}
 	return c
 }
 
 func RunAfter(tcs ...TaskContext) TaskOption {
-	return func(c *taskConfig) {
+	return taskOptionFunc(func(c *taskConfig) {
 		c.after = append(c.after, tcs...)
-	}
+	})
 }
 
 type Interceptor func(context.Context, TaskContext, Task) error
 
-func Intercept(is ...Interceptor) TaskOption {
-	return func(c *taskConfig) {
-		if c.interceptor != nil {
-			is = append([]Interceptor{c.interceptor}, is...)
-		}
-		c.interceptor = joinInterceptors(is)
+func (i Interceptor) apply(c *taskConfig) {
+	if c.interceptor != nil {
+		c.interceptor = ChainInterceptors(append([]Interceptor{c.interceptor}, i)...)
+	} else {
+		c.interceptor = i
 	}
 }
 
-func joinInterceptors(is []Interceptor) Interceptor {
+func ChainInterceptors(is ...Interceptor) Interceptor {
 	switch len(is) {
 	case 0:
 		panic("no interceptor")
@@ -44,7 +51,7 @@ func joinInterceptors(is []Interceptor) Interceptor {
 		return is[0]
 	default:
 		head := is[0]
-		tail := joinInterceptors(is[1:])
+		tail := ChainInterceptors(is[1:]...)
 		return func(ctx1 context.Context, tc TaskContext, t Task) error {
 			return head(ctx1, tc, func(ctx2 context.Context) error {
 				return tail(ctx2, tc, t)

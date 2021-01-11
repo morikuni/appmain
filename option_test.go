@@ -60,26 +60,22 @@ func TestIntercept(t *testing.T) {
 	app.AddMainTask("main", func(ctx context.Context) error {
 		return nil
 	},
-		Intercept(
+		ChainInterceptors(
 			createInterceptor(1),
 			createInterceptor(2),
 			createInterceptor(3),
 		),
-		Intercept(
-			createInterceptor(4),
+		createInterceptor(4),
+		ChainInterceptors(
 			createInterceptor(5),
 			createInterceptor(6),
-		),
-		Intercept(
 			createInterceptor(7),
-			createInterceptor(8),
-			createInterceptor(9),
 		),
 	)
 
 	app.Run()
 
-	if count != 9 {
-		t.Fatalf("want %d got %d", 9, count)
+	if count != 7 {
+		t.Fatalf("want %d got %d", 7, count)
 	}
 }
