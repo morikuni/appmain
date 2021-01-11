@@ -300,12 +300,7 @@ func (t *task) run(ctx context.Context) {
 	}()
 
 	for _, at := range t.config.after {
-		select {
-		case <-at.Done():
-		case <-ctx.Done():
-			t.err = ctx.Err()
-			return
-		}
+		<-at.Done()
 	}
 
 	t.err = t.task(ctx)
