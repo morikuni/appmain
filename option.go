@@ -1,61 +1,51 @@
 package appmain
 
-import (
-	"context"
-)
+import "context"
 
-type TaskOption interface {
-	apply(c *taskConfig)
+type Option interface {
+	apply(c *config)
 }
 
-type taskOptionFunc func(c *taskConfig)
-
-func (f taskOptionFunc) apply(c *taskConfig) {
-	f(c)
+type config struct {
+	errorStrategy ErrorStrategy
 }
 
-type taskConfig struct {
-	after       []TaskContext
-	interceptor Interceptor
-}
+func newConfig(opts []Option) *config {
+	c := &config{
+		errorStrategy: defaultErrorStrategy,
+	}
 
-func newTaskConfig(opts []TaskOption) *taskConfig {
-	c := new(taskConfig)
 	for _, o := range opts {
 		o.apply(c)
 	}
 	return c
 }
 
-func RunAfter(tcs ...TaskContext) TaskOption {
-	return taskOptionFunc(func(c *taskConfig) {
-		c.after = append(c.after, tcs...)
-	})
+type Decision int
+
+const (
+	Continue Decision = iota
+	Exit
+)
+
+type ErrorStrategy func(TaskContext) Decision
+
+func (s ErrorStrategy) apply(c *config) {
+	c.errorStrategy = s
 }
 
-type Interceptor func(context.Context, TaskContext, Task) error
-
-func (i Interceptor) apply(c *taskConfig) {
-	if c.interceptor != nil {
-		c.interceptor = ChainInterceptors(append([]Interceptor{c.interceptor}, i)...)
-	} else {
-		c.interceptor = i
+func defaultErrorStrategy(tc TaskContext) Decision {
+	err := tc.Err()
+	if err == context.Canceled {
+		return Continue
 	}
-}
 
-func ChainInterceptors(is ...Interceptor) Interceptor {
-	switch len(is) {
-	case 0:
-		panic("no interceptor")
-	case 1:
-		return is[0]
+	switch tc.Type() {
+	case TaskTypeInit, TaskTypeCleanup:
+		return Continue
+	case TaskTypeMain:
+		return Exit
 	default:
-		head := is[0]
-		tail := ChainInterceptors(is[1:]...)
-		return func(ctx1 context.Context, tc TaskContext, t Task) error {
-			return head(ctx1, tc, func(ctx2 context.Context) error {
-				return tail(ctx2, tc, t)
-			})
-		}
+		panic("never happen")
 	}
 }

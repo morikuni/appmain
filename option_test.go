@@ -2,80 +2,73 @@ package appmain
 
 import (
 	"context"
+	"errors"
 	"testing"
+	"time"
 )
 
-func TestRunAfter(t *testing.T) {
-	app := New()
+func TestErrorStrategy_Continue(t *testing.T) {
+	var errTCs []TaskContext
+
+	app := New(ErrorStrategy(func(tc TaskContext) Decision {
+		errTCs = append(errTCs, tc)
+		return Continue
+	}))
 
 	var count int
-	createTask := func(want int) func(ctx context.Context) error {
-		return func(ctx context.Context) error {
-			count++
-			if count != want {
-				t.Fatalf("want %d got %d", want, count)
-			}
-			return nil
+	main1 := app.AddMainTask("", func(ctx context.Context) error {
+		count++
+		return errors.New("aaa")
+	})
+	main2 := app.AddMainTask("", func(ctx context.Context) error {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(100 * time.Millisecond):
 		}
-	}
-
-	init := app.AddInitTask("1", createTask(1))
-	app.AddInitTask("2", createTask(2), RunAfter(init))
-
-	main1 := app.AddMainTask("3", createTask(3))
-	main2 := app.AddMainTask("4 or 5", func(ctx context.Context) error {
+		count++
+		return errors.New("aaa")
+	})
+	app.AddMainTask("", func(ctx context.Context) error {
 		count++
 		return nil
-	}, RunAfter(main1))
-	main3 := app.AddMainTask("4 or 5", func(ctx context.Context) error {
-		count++
-		return nil
-	}, RunAfter(main1))
-	app.AddMainTask("6", createTask(6), RunAfter(main2, main3))
-
-	cleanup := app.AddCleanupTask("7", createTask(7))
-	app.AddCleanupTask("8", createTask(8), RunAfter(cleanup))
+	})
 
 	app.Run()
 
-	if count != 8 {
-		t.Fatalf("want %d got %d", 8, count)
-	}
+	equal(t, errTCs, []TaskContext{main1, main2})
+	equal(t, count, 3)
 }
 
-func TestIntercept(t *testing.T) {
-	app := New()
+func TestErrorStrategy_Exit(t *testing.T) {
+	var errTCs []TaskContext
+
+	app := New(ErrorStrategy(func(tc TaskContext) Decision {
+		errTCs = append(errTCs, tc)
+		return Exit
+	}))
 
 	var count int
-	createInterceptor := func(want int) Interceptor {
-		return func(ctx context.Context, taskContext TaskContext, task Task) error {
-			count++
-			if count != want {
-				t.Fatalf("want %d got %d", want, count)
-			}
-			return task(ctx)
+	main1 := app.AddMainTask("", func(ctx context.Context) error {
+		count++
+		return errors.New("aaa")
+	})
+	main2 := app.AddMainTask("", func(ctx context.Context) error {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(1000 * time.Millisecond):
 		}
-	}
-
-	app.AddMainTask("main", func(ctx context.Context) error {
+		count++
+		return errors.New("aaa")
+	})
+	app.AddMainTask("", func(ctx context.Context) error {
+		count++
 		return nil
-	},
-		ChainInterceptors(
-			createInterceptor(1),
-			createInterceptor(2),
-			createInterceptor(3),
-		),
-		createInterceptor(4),
-		ChainInterceptors(
-			createInterceptor(5),
-			createInterceptor(6),
-			createInterceptor(7),
-		),
-	)
+	})
 
 	app.Run()
 
-	if count != 7 {
-		t.Fatalf("want %d got %d", 7, count)
-	}
+	equal(t, errTCs, []TaskContext{main1, main2})
+	equal(t, count, 2)
 }

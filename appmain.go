@@ -2,7 +2,6 @@ package appmain
 
 import (
 	"context"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -11,29 +10,14 @@ import (
 type App struct {
 	sigChan chan os.Signal
 	tasks   map[TaskType][]*task
-	onError func(TaskContext) Decision
+	config  *config
 }
 
-func New() *App {
+func New(opts ...Option) *App {
 	return &App{
 		sigChan: nil,
 		tasks:   make(map[TaskType][]*task),
-		onError: func(tc TaskContext) Decision {
-			err := tc.Err()
-			if err == context.Canceled {
-				return Continue
-			}
-
-			log.Printf("%s: %v", tc.Name(), err)
-			switch tc.Type() {
-			case TaskTypeInit, TaskTypeCleanup:
-				return Continue
-			case TaskTypeMain:
-				return Exit
-			default:
-				panic("never happen")
-			}
-		},
+		config:  newConfig(opts),
 	}
 }
 
@@ -55,15 +39,10 @@ func (app *App) addTask(name string, tt TaskType, t Task, opts []TaskOption) Tas
 	return r
 }
 
-type Decision int
-
-const (
-	Continue Decision = iota
-	Exit
-)
-
-func (app *App) OnError(f func(tc TaskContext) Decision) {
-	app.onError = f
+func (app *App) ApplyOption(opts ...Option) {
+	for _, o := range opts {
+		o.apply(app.config)
+	}
 }
 
 func (app *App) ShutdownOnSignal(sigs ...os.Signal) {
@@ -192,9 +171,13 @@ func (app *App) runTask(ctx context.Context, tt TaskType) <-chan int {
 	tasks := app.tasks[tt]
 	ctx, cancel := context.WithCancel(ctx)
 
+	doneTCs := make(chan TaskContext, len(tasks))
 	for _, t := range tasks {
 		t := t
-		go t.run(ctx)
+		go func() {
+			t.run(ctx)
+			doneTCs <- t
+		}()
 	}
 
 	result := make(chan int, 1)
@@ -202,16 +185,18 @@ func (app *App) runTask(ctx context.Context, tt TaskType) <-chan int {
 		defer cancel()
 
 		var code int
-		for _, t := range tasks {
-			<-t.Done()
-			err := t.Err()
+		for i := 0; i < len(tasks); i++ {
+			tc := <-doneTCs
+			err := tc.Err()
 			if err != nil {
-				decision := app.onError(t)
-				if decision == Exit {
+				decision := app.config.errorStrategy(tc)
+				if decision == Exit && code == 0 {
 					code = 1
+					cancel()
 				}
 			}
 		}
+
 		result <- code
 	}()
 
