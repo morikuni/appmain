@@ -72,3 +72,24 @@ func TestErrorStrategy_Exit(t *testing.T) {
 	equal(t, errTCs, []TaskContext{main1, main2})
 	equal(t, count, 2)
 }
+
+func TestDefaultTaskOptions(t *testing.T) {
+	app := New(DefaultTaskOptions(
+		Interceptor(func(ctx context.Context, tc TaskContext, t Task) error {
+			t(ctx)
+			t(ctx)
+			return nil
+		}),
+	))
+
+	var count int
+	app.AddMainTask("", func(ctx context.Context) error {
+		count++
+		return errors.New("error")
+	})
+
+	code := app.Run()
+
+	equal(t, code, 0)
+	equal(t, count, 2)
+}

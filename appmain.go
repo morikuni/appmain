@@ -10,14 +10,14 @@ import (
 type App struct {
 	sigChan chan os.Signal
 	tasks   map[TaskType][]*task
-	config  *config
+	opts    []Option
 }
 
 func New(opts ...Option) *App {
 	return &App{
 		sigChan: nil,
 		tasks:   make(map[TaskType][]*task),
-		config:  newConfig(opts),
+		opts:    opts,
 	}
 }
 
@@ -40,9 +40,7 @@ func (app *App) addTask(name string, tt TaskType, t Task, opts []TaskOption) Tas
 }
 
 func (app *App) ApplyOption(opts ...Option) {
-	for _, o := range opts {
-		o.apply(app.config)
-	}
+	app.opts = append(app.opts, opts...)
 }
 
 func (app *App) ShutdownOnSignal(sigs ...os.Signal) {
@@ -60,6 +58,8 @@ func (app *App) SendSignal(sig os.Signal) {
 }
 
 func (app *App) Run() (code int) {
+	config := newConfig(app.opts)
+
 	if app.sigChan == nil {
 		app.ShutdownOnSignal(os.Interrupt, syscall.SIGTERM)
 	}
@@ -72,7 +72,7 @@ func (app *App) Run() (code int) {
 		ctx := context.Background()
 		cleanupCtx, cancelCleanup := context.WithCancel(ctx)
 		defer cancelCleanup()
-		cleanupResult := app.cleanup(cleanupCtx)
+		cleanupResult := app.cleanup(cleanupCtx, config)
 
 		if resultChan != nil {
 			select {
@@ -116,7 +116,7 @@ func (app *App) Run() (code int) {
 	background := context.Background()
 	initCtx, cancelInit := context.WithCancel(background)
 	defer cancelInit()
-	initResult := app.init(initCtx)
+	initResult := app.init(initCtx, config)
 	resultChan = initResult
 
 	select {
@@ -132,7 +132,7 @@ func (app *App) Run() (code int) {
 
 	mainCtx, cancelMain := context.WithCancel(background)
 	defer cancelMain()
-	mainResult := app.main(mainCtx)
+	mainResult := app.main(mainCtx, config)
 	resultChan = mainResult
 
 	select {
@@ -155,19 +155,19 @@ func signalCode(sig os.Signal) int {
 	return 1
 }
 
-func (app *App) init(ctx context.Context) <-chan int {
-	return app.runTask(ctx, TaskTypeInit)
+func (app *App) init(ctx context.Context, appConfig *config) <-chan int {
+	return app.runTask(ctx, TaskTypeInit, appConfig)
 }
 
-func (app *App) main(ctx context.Context) <-chan int {
-	return app.runTask(ctx, TaskTypeMain)
+func (app *App) main(ctx context.Context, appConfig *config) <-chan int {
+	return app.runTask(ctx, TaskTypeMain, appConfig)
 }
 
-func (app *App) cleanup(ctx context.Context) <-chan int {
-	return app.runTask(ctx, TaskTypeCleanup)
+func (app *App) cleanup(ctx context.Context, appConfig *config) <-chan int {
+	return app.runTask(ctx, TaskTypeCleanup, appConfig)
 }
 
-func (app *App) runTask(ctx context.Context, tt TaskType) <-chan int {
+func (app *App) runTask(ctx context.Context, tt TaskType, appConfig *config) <-chan int {
 	tasks := app.tasks[tt]
 	ctx, cancel := context.WithCancel(ctx)
 
@@ -175,7 +175,7 @@ func (app *App) runTask(ctx context.Context, tt TaskType) <-chan int {
 	for _, t := range tasks {
 		t := t
 		go func() {
-			t.run(ctx)
+			t.run(ctx, appConfig.defaultTaskOptions)
 			doneTCs <- t
 		}()
 	}
@@ -189,7 +189,7 @@ func (app *App) runTask(ctx context.Context, tt TaskType) <-chan int {
 			tc := <-doneTCs
 			err := tc.Err()
 			if err != nil {
-				decision := app.config.errorStrategy(tc)
+				decision := appConfig.errorStrategy(tc)
 				if decision == Exit && code == 0 {
 					code = 1
 					cancel()

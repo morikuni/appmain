@@ -23,41 +23,22 @@ type TaskContext interface {
 }
 
 type task struct {
-	name   string
-	ttype  TaskType
-	task   Task
-	done   chan struct{}
-	err    error
-	config *taskConfig
+	name  string
+	ttype TaskType
+	task  Task
+	done  chan struct{}
+	err   error
+	opts  []TaskOption
 }
 
 func newTask(name string, tt TaskType, t Task, opts []TaskOption) *task {
-	config := newTaskConfig(opts)
-	switch tt {
-	case TaskTypeInit:
-		for _, at := range config.after {
-			if at.Type() != TaskTypeInit {
-				panic(name + ": init task can run after only init task: " + at.Name())
-			}
-		}
-	case TaskTypeMain:
-		for _, at := range config.after {
-			switch at.Type() {
-			case TaskTypeInit:
-				panic(name + ": main task always run after init task: " + at.Name())
-			case TaskTypeCleanup:
-				panic(name + ": main task should start before cleanup task: " + at.Name())
-			}
-		}
-	}
-
 	return &task{
-		name:   name,
-		ttype:  tt,
-		task:   t,
-		done:   make(chan struct{}),
-		err:    nil,
-		config: config,
+		name:  name,
+		ttype: tt,
+		task:  t,
+		done:  make(chan struct{}),
+		err:   nil,
+		opts:  opts,
 	}
 }
 
@@ -77,7 +58,26 @@ func (t *task) Err() error {
 	return t.err
 }
 
-func (t *task) run(ctx context.Context) {
+func (t *task) run(ctx context.Context, defaults []TaskOption) {
+	config := newTaskConfig(append(defaults, t.opts...))
+	switch t.ttype {
+	case TaskTypeInit:
+		for _, at := range config.after {
+			if at.Type() != TaskTypeInit {
+				panic(t.name + ": init task can run after only init task: " + at.Name())
+			}
+		}
+	case TaskTypeMain:
+		for _, at := range config.after {
+			switch at.Type() {
+			case TaskTypeInit:
+				panic(t.name + ": main task always run after init task: " + at.Name())
+			case TaskTypeCleanup:
+				panic(t.name + ": main task should start before cleanup task: " + at.Name())
+			}
+		}
+	}
+
 	defer func() {
 		if r := recover(); r != nil && t.err != nil {
 			t.err = fmt.Errorf("panic: %v", r)
@@ -85,12 +85,12 @@ func (t *task) run(ctx context.Context) {
 		close(t.done)
 	}()
 
-	for _, at := range t.config.after {
+	for _, at := range config.after {
 		<-at.Done()
 	}
 
-	if t.config.interceptor != nil {
-		t.err = t.config.interceptor(ctx, t, t.task)
+	if config.interceptor != nil {
+		t.err = config.interceptor(ctx, t, t.task)
 	} else {
 		t.err = t.task(ctx)
 	}

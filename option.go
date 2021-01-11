@@ -6,8 +6,15 @@ type Option interface {
 	apply(c *config)
 }
 
+type optionFunc func(c *config)
+
+func (f optionFunc) apply(c *config) {
+	f(c)
+}
+
 type config struct {
-	errorStrategy ErrorStrategy
+	errorStrategy      ErrorStrategy
+	defaultTaskOptions []TaskOption
 }
 
 func newConfig(opts []Option) *config {
@@ -48,4 +55,10 @@ func defaultErrorStrategy(tc TaskContext) Decision {
 	default:
 		panic("never happen")
 	}
+}
+
+func DefaultTaskOptions(opts ...TaskOption) Option {
+	return optionFunc(func(c *config) {
+		c.defaultTaskOptions = append(c.defaultTaskOptions, opts...)
+	})
 }
