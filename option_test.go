@@ -3,6 +3,7 @@ package appmain
 import (
 	"context"
 	"errors"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -92,4 +93,48 @@ func TestDefaultTaskOptions(t *testing.T) {
 
 	equal(t, code, 0)
 	equal(t, count, 2)
+}
+
+func TestNotifySignal(t *testing.T) {
+	t.Run("shutdown", func(t *testing.T) {
+		app := New(NotifySignal(syscall.SIGHUP))
+
+		var count int
+		app.AddMainTask("", func(ctx context.Context) error {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(100 * time.Millisecond):
+			}
+			count++
+			return nil
+		})
+
+		app.SendSignal(syscall.SIGHUP)
+		code := app.Run()
+
+		equal(t, code, 0)
+		equal(t, count, 0)
+	})
+
+	t.Run("ignore", func(t *testing.T) {
+		app := New(NotifySignal(syscall.SIGHUP))
+
+		var count int
+		app.AddMainTask("", func(ctx context.Context) error {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(100 * time.Millisecond):
+			}
+			count++
+			return nil
+		})
+
+		app.SendSignal(syscall.SIGTERM)
+		code := app.Run()
+
+		equal(t, code, 0)
+		equal(t, count, 1)
+	})
 }

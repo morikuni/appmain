@@ -3,21 +3,18 @@ package appmain
 import (
 	"context"
 	"os"
-	"os/signal"
 	"syscall"
 )
 
 type App struct {
-	sigChan chan os.Signal
-	tasks   map[TaskType][]*task
-	config  *config
+	tasks  map[TaskType][]*task
+	config *config
 }
 
 func New(opts ...Option) *App {
 	return &App{
-		sigChan: nil,
-		tasks:   make(map[TaskType][]*task),
-		config:  newConfig(opts),
+		tasks:  make(map[TaskType][]*task),
+		config: newConfig(opts),
 	}
 }
 
@@ -39,25 +36,13 @@ func (app *App) addTask(name string, tt TaskType, t Task, opts []TaskOption) Tas
 	return r
 }
 
-func (app *App) ShutdownOnSignal(sigs ...os.Signal) {
-	if app.sigChan != nil {
-		signal.Stop(app.sigChan)
-	}
-	app.sigChan = make(chan os.Signal, 1)
-	signal.Notify(app.sigChan, sigs...)
-}
-
 func (app *App) SendSignal(sig os.Signal) {
-	if app.sigChan != nil {
-		app.sigChan <- sig
+	if _, ok := app.config.sigSet[sig]; ok {
+		app.config.sigChan <- sig
 	}
 }
 
 func (app *App) Run() (code int) {
-	if app.sigChan == nil {
-		app.ShutdownOnSignal(os.Interrupt, syscall.SIGTERM)
-	}
-
 	var (
 		resultChan  <-chan int
 		signalCount int
@@ -74,7 +59,7 @@ func (app *App) Run() (code int) {
 				if c != 0 && code != 0 {
 					code = c
 				}
-			case sig := <-app.sigChan:
+			case sig := <-app.config.sigChan:
 				if code == 0 {
 					code = signalCode(sig)
 				}
@@ -94,7 +79,7 @@ func (app *App) Run() (code int) {
 					code = c
 				}
 				return
-			case sig := <-app.sigChan:
+			case sig := <-app.config.sigChan:
 				signalCount++
 				if signalCount >= 2 {
 					if code == 0 {
@@ -118,7 +103,7 @@ func (app *App) Run() (code int) {
 		if c != 0 {
 			return c
 		}
-	case <-app.sigChan:
+	case <-app.config.sigChan:
 		signalCount++
 		cancelInit()
 		return 0
@@ -133,7 +118,7 @@ func (app *App) Run() (code int) {
 	case c := <-mainResult:
 		resultChan = nil
 		return c
-	case <-app.sigChan:
+	case <-app.config.sigChan:
 		signalCount++
 		cancelMain()
 		return 0

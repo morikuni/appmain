@@ -1,6 +1,11 @@
 package appmain
 
-import "context"
+import (
+	"context"
+	"os"
+	"os/signal"
+	"syscall"
+)
 
 type Option interface {
 	apply(c *config)
@@ -13,6 +18,8 @@ func (f optionFunc) apply(c *config) {
 }
 
 type config struct {
+	sigChan            chan os.Signal
+	sigSet             map[os.Signal]struct{}
 	errorStrategy      ErrorStrategy
 	defaultTaskOptions []TaskOption
 }
@@ -25,6 +32,16 @@ func newConfig(opts []Option) *config {
 	for _, o := range opts {
 		o.apply(c)
 	}
+
+	if c.sigChan == nil {
+		c.sigChan = make(chan os.Signal, 1)
+		signal.Notify(c.sigChan, os.Interrupt, syscall.SIGTERM)
+		c.sigSet = map[os.Signal]struct{}{
+			os.Interrupt:    {},
+			syscall.SIGTERM: {},
+		}
+	}
+
 	return c
 }
 
@@ -60,5 +77,17 @@ func defaultErrorStrategy(tc TaskContext) Decision {
 func DefaultTaskOptions(opts ...TaskOption) Option {
 	return optionFunc(func(c *config) {
 		c.defaultTaskOptions = append(c.defaultTaskOptions, opts...)
+	})
+}
+
+func NotifySignal(sigs ...os.Signal) Option {
+	return optionFunc(func(c *config) {
+		c.sigChan = make(chan os.Signal, 1)
+		signal.Notify(c.sigChan, sigs...)
+		set := make(map[os.Signal]struct{}, len(sigs))
+		for _, s := range sigs {
+			set[s] = struct{}{}
+		}
+		c.sigSet = set
 	})
 }
