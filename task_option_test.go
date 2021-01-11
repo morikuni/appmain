@@ -2,17 +2,17 @@ package appmain
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 )
 
 func TestRunAfter(t *testing.T) {
 	app := New()
 
-	var count int
-	createTask := func(want int) func(ctx context.Context) error {
+	var count int32
+	createTask := func(want int32) func(ctx context.Context) error {
 		return func(ctx context.Context) error {
-			count++
-			if count != want {
+			if atomic.AddInt32(&count, 1) != want {
 				t.Fatalf("want %d got %d", want, count)
 			}
 			return nil
@@ -24,11 +24,11 @@ func TestRunAfter(t *testing.T) {
 
 	main1 := app.AddMainTask("3", createTask(3))
 	main2 := app.AddMainTask("4 or 5", func(ctx context.Context) error {
-		count++
+		atomic.AddInt32(&count, 1)
 		return nil
 	}, RunAfter(main1))
 	main3 := app.AddMainTask("4 or 5", func(ctx context.Context) error {
-		count++
+		atomic.AddInt32(&count, 1)
 		return nil
 	}, RunAfter(main1))
 	app.AddMainTask("6", createTask(6), RunAfter(main2, main3))

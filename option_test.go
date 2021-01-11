@@ -3,6 +3,7 @@ package appmain
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -16,9 +17,9 @@ func TestErrorStrategy_Continue(t *testing.T) {
 		return Continue
 	}))
 
-	var count int
+	var count int32
 	main1 := app.AddMainTask("", func(ctx context.Context) error {
-		count++
+		atomic.AddInt32(&count, 1)
 		return errors.New("aaa")
 	})
 	main2 := app.AddMainTask("", func(ctx context.Context) error {
@@ -27,18 +28,18 @@ func TestErrorStrategy_Continue(t *testing.T) {
 			return ctx.Err()
 		case <-time.After(100 * time.Millisecond):
 		}
-		count++
+		atomic.AddInt32(&count, 1)
 		return errors.New("aaa")
 	})
 	app.AddMainTask("", func(ctx context.Context) error {
-		count++
+		atomic.AddInt32(&count, 1)
 		return nil
 	})
 
 	app.Run()
 
 	equal(t, errTCs, []TaskContext{main1, main2})
-	equal(t, count, 3)
+	equal(t, count, int32(3))
 }
 
 func TestErrorStrategy_Exit(t *testing.T) {
@@ -49,9 +50,9 @@ func TestErrorStrategy_Exit(t *testing.T) {
 		return Exit
 	}))
 
-	var count int
+	var count int32
 	main1 := app.AddMainTask("", func(ctx context.Context) error {
-		count++
+		atomic.AddInt32(&count, 1)
 		return errors.New("aaa")
 	})
 	main2 := app.AddMainTask("", func(ctx context.Context) error {
@@ -60,18 +61,18 @@ func TestErrorStrategy_Exit(t *testing.T) {
 			return ctx.Err()
 		case <-time.After(1000 * time.Millisecond):
 		}
-		count++
+		atomic.AddInt32(&count, 1)
 		return errors.New("aaa")
 	})
 	app.AddMainTask("", func(ctx context.Context) error {
-		count++
+		atomic.AddInt32(&count, 1)
 		return nil
 	})
 
 	app.Run()
 
 	equal(t, errTCs, []TaskContext{main1, main2})
-	equal(t, count, 2)
+	equal(t, count, int32(2))
 }
 
 func TestDefaultTaskOptions(t *testing.T) {

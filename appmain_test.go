@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"reflect"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -167,18 +168,18 @@ func TestApp(t *testing.T) {
 }
 
 type ResultSet struct {
-	NumInit        int
-	SuccessInit    int
-	NumMain        int
-	SuccessMain    int
-	NumCleanup     int
-	SuccessCleanup int
+	NumInit        int32
+	SuccessInit    int32
+	NumMain        int32
+	SuccessMain    int32
+	NumCleanup     int32
+	SuccessCleanup int32
 }
 
 func runApp(runner func(*App) int) (int, ResultSet, time.Duration) {
-	createTask := func(count, success *int, wait bool) func(ctx context.Context) error {
+	createTask := func(count, success *int32, wait bool) func(ctx context.Context) error {
 		return func(ctx context.Context) error {
-			*count++
+			atomic.AddInt32(count, 1)
 			if wait {
 				select {
 				case <-time.After(100 * time.Millisecond):
@@ -186,29 +187,29 @@ func runApp(runner func(*App) int) (int, ResultSet, time.Duration) {
 					return ctx.Err()
 				}
 			}
-			*success++
+			atomic.AddInt32(success, 1)
 			return nil
 		}
 	}
 
 	app := New()
 	var (
-		nInit int
-		sInit int
+		nInit int32
+		sInit int32
 	)
 	app.AddInitTask("init 1", createTask(&nInit, &sInit, false))
 	app.AddInitTask("init 2", createTask(&nInit, &sInit, true))
 
 	var (
-		nMain int
-		sMain int
+		nMain int32
+		sMain int32
 	)
 	app.AddMainTask("main 1", createTask(&nMain, &sMain, false))
 	app.AddMainTask("main 2", createTask(&nMain, &sMain, true))
 
 	var (
-		nCleanup int
-		sCleanup int
+		nCleanup int32
+		sCleanup int32
 	)
 	app.AddCleanupTask("cleanup 1", createTask(&nCleanup, &sCleanup, false))
 	app.AddCleanupTask("cleanup 2", createTask(&nCleanup, &sCleanup, true))
@@ -217,11 +218,11 @@ func runApp(runner func(*App) int) (int, ResultSet, time.Duration) {
 	code := runner(app)
 	d := time.Now().Sub(start)
 	return code, ResultSet{
-		NumInit:        nInit,
-		SuccessInit:    sInit,
-		NumMain:        nMain,
-		SuccessMain:    sMain,
-		NumCleanup:     nCleanup,
-		SuccessCleanup: sCleanup,
+		NumInit:        atomic.LoadInt32(&nInit),
+		SuccessInit:    atomic.LoadInt32(&sInit),
+		NumMain:        atomic.LoadInt32(&nMain),
+		SuccessMain:    atomic.LoadInt32(&sMain),
+		NumCleanup:     atomic.LoadInt32(&nCleanup),
+		SuccessCleanup: atomic.LoadInt32(&sCleanup),
 	}, d
 }
