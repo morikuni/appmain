@@ -65,9 +65,9 @@ func defaultErrorStrategy(tc TaskContext) Decision {
 	}
 
 	switch tc.Type() {
-	case TaskTypeInit, TaskTypeCleanup:
+	case TaskTypeCleanup:
 		return Continue
-	case TaskTypeMain:
+	case TaskTypeInit, TaskTypeMain:
 		return Exit
 	default:
 		panic("never happen")
