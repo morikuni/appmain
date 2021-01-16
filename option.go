@@ -7,6 +7,11 @@ import (
 	"syscall"
 )
 
+// Option represents an interface of the option for the New function.
+// Available options are below.
+// - ErrorStrategy
+// - DefaultTaskOptions
+// - NotifySignal
 type Option interface {
 	apply(c *config)
 }
@@ -45,13 +50,21 @@ func newConfig(opts []Option) *config {
 	return c
 }
 
+// Decision is the result of ErrorStrategy used to decide if
+// canceling current tasks.
 type Decision int
 
 const (
+	// Continue indicates that keep running current tasks.
 	Continue Decision = iota
+	// Exit indicates that cancel current tasks.
 	Exit
 )
 
+// ErrorStrategy is the option for the New function to decide how the App
+// performs when any tasks return an error. It is called only if
+// any tasks return an error. The error from the task is available
+// from TaskContext.Err().
 type ErrorStrategy func(TaskContext) Decision
 
 func (s ErrorStrategy) apply(c *config) {
@@ -74,12 +87,17 @@ func defaultErrorStrategy(tc TaskContext) Decision {
 	}
 }
 
+// DefaultTaskOptions is the option for the New function to set the
+// default option for every tasks in the App.
 func DefaultTaskOptions(opts ...TaskOption) Option {
 	return optionFunc(func(c *config) {
 		c.defaultTaskOptions = append(c.defaultTaskOptions, opts...)
 	})
 }
 
+// NotifySignal is the option for New function to overwrite the
+// signals that the App handles to start cleanup tasks.
+// By default, the App handles syscall.SIGINT and syscall.SIGTERM.
 func NotifySignal(sigs ...os.Signal) Option {
 	return optionFunc(func(c *config) {
 		c.sigChan = make(chan os.Signal, 1)

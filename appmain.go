@@ -6,11 +6,17 @@ import (
 	"syscall"
 )
 
+// App represents an application.
 type App struct {
 	tasks  map[TaskType][]*task
 	config *config
 }
 
+// New creates a new App instance from options.
+// Available options are below.
+// - ErrorStrategy
+// - DefaultTaskOptions
+// - NotifySignal
 func New(opts ...Option) *App {
 	return &App{
 		tasks:  make(map[TaskType][]*task),
@@ -18,14 +24,37 @@ func New(opts ...Option) *App {
 	}
 }
 
+// AddInitTask add a task with name as initialization task of the App.
+//
+// The init tasks are executed before starting main tasks. Therefore,
+// the main tasks won't start until all init tasks complete.
+//
+// By default, if any init task return an error, the App will cancels all
+// context.Context in all init tasks and start cleanup tasks before executing
+// main tasks. To overwrite default strategy, use ErrorStrategy option to the New function.
 func (app *App) AddInitTask(name string, t Task, opts ...TaskOption) TaskContext {
 	return app.addTask(name, TaskTypeInit, t, opts)
 }
 
+// AddMainTask add a task with name as main task of the App.
+//
+// The main tasks will start after all init tasks completed.
+//
+// By default, if any main task return an error, the App will cancels all
+// context.Context in all  main tasks and start cleanup tasks.
+// To overwrite default strategy, use ErrorStrategy option to the New function.
 func (app *App) AddMainTask(name string, t Task, opts ...TaskOption) TaskContext {
 	return app.addTask(name, TaskTypeMain, t, opts)
 }
 
+// AddCleanupTask add a task with name as cleanup task of the App.
+//
+// The cleanup tasks are executed when all main tasks completed or the first signal
+// is received. If signal is received twice, the context.Context in cleanup tasks is
+// canceled and the App exit without waiting completion of cleanup tasks.
+//
+// Unlike init and main tasks, context.Context in the cleanup tasks is not canceled
+// even if some tasks return error.
 func (app *App) AddCleanupTask(name string, t Task, opts ...TaskOption) TaskContext {
 	return app.addTask(name, TaskTypeCleanup, t, opts)
 }
@@ -36,12 +65,19 @@ func (app *App) addTask(name string, tt TaskType, t Task, opts []TaskOption) Tas
 	return r
 }
 
+// SendSignal performs like sending a signal to the App.
+// Since the App handles signal by default, this method is not necessary for usual apps.
+// It is useful for testing the App.
 func (app *App) SendSignal(sig os.Signal) {
 	if _, ok := app.config.sigSet[sig]; ok {
 		app.config.sigChan <- sig
 	}
 }
 
+// Run runs the App and returns status code for the main function.
+// It can be used like following.
+//
+//   os.Exit(app.Run())
 func (app *App) Run() (code int) {
 	var (
 		resultChan  <-chan int

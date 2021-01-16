@@ -5,16 +5,22 @@ import (
 	"fmt"
 )
 
+// Task represents a task in the App.
 type Task func(ctx context.Context) error
 
+// TaskType represents a type of the tasks.
 type TaskType int
 
 const (
+	// TaskTypeInit indicates the task is init task.
 	TaskTypeInit TaskType = iota + 1
+	// TaskTypeMain indicates the task is main task.
 	TaskTypeMain
+	// TaskTypeCleanup indicates the task is cleanup task.
 	TaskTypeCleanup
 )
 
+// TaskContext is the context of the Task.
 type TaskContext interface {
 	Name() string
 	Type() TaskType
