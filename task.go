@@ -79,7 +79,7 @@ func (t *task) Err() error {
 
 func (t *task) run(ctx context.Context) {
 	defer func() {
-		if r := recover(); r != nil && t.err != nil {
+		if r := recover(); r != nil && t.err == nil {
 			t.err = fmt.Errorf("panic: %v", r)
 		}
 		close(t.done)
