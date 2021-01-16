@@ -1,7 +1,6 @@
 package appmain
 
 import (
-	"context"
 	"os"
 	"os/signal"
 	"syscall"
@@ -72,11 +71,6 @@ func (s ErrorStrategy) apply(c *config) {
 }
 
 func defaultErrorStrategy(tc TaskContext) Decision {
-	err := tc.Err()
-	if err == context.Canceled {
-		return Continue
-	}
-
 	switch tc.Type() {
 	case TaskTypeCleanup:
 		return Continue
