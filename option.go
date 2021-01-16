@@ -8,9 +8,9 @@ import (
 
 // Option represents an interface of the option for the New function.
 // Available options are below.
-// - ErrorStrategy
-// - DefaultTaskOptions
-// - NotifySignal
+//   - ErrorStrategy
+//   - DefaultTaskOptions
+//   - NotifySignal
 type Option interface {
 	apply(c *config)
 }

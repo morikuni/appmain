@@ -7,9 +7,9 @@ import (
 // TaskOption represents an interface of the option for the Add***Task
 // functions of App.
 // Available TaskOption are below.
-// - RunAfter
-// - Interceptor
-// - ChainInterceptors
+//   - RunAfter
+//   - Interceptor
+//   - ChainInterceptors
 type TaskOption interface {
 	applyTask(c *taskConfig)
 }

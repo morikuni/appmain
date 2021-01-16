@@ -14,9 +14,9 @@ type App struct {
 
 // New creates a new App instance from options.
 // Available options are below.
-// - ErrorStrategy
-// - DefaultTaskOptions
-// - NotifySignal
+//   - ErrorStrategy
+//   - DefaultTaskOptions
+//   - NotifySignal
 func New(opts ...Option) *App {
 	return &App{
 		tasks:  make(map[TaskType][]*task),
