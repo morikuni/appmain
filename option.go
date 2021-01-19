@@ -30,7 +30,7 @@ type config struct {
 
 func newConfig(opts []Option) *config {
 	c := &config{
-		errorStrategy: defaultErrorStrategy,
+		errorStrategy: DefaultErrorStrategy,
 	}
 
 	for _, o := range opts {
@@ -70,7 +70,8 @@ func (s ErrorStrategy) apply(c *config) {
 	c.errorStrategy = s
 }
 
-func defaultErrorStrategy(tc TaskContext) Decision {
+// DefaultErrorStrategy is the default strategy of the App.
+func DefaultErrorStrategy(tc TaskContext) Decision {
 	switch tc.Type() {
 	case TaskTypeCleanup:
 		return Continue
