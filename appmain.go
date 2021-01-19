@@ -137,6 +137,7 @@ func (app *App) Run() (code int) {
 	select {
 	case c := <-initResult:
 		if c != 0 {
+			resultChan = nil
 			return c
 		}
 	case <-app.config.sigChan:
