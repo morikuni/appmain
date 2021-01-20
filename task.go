@@ -99,10 +99,6 @@ func (t *task) run(ctx context.Context) {
 
 	for _, at := range t.config.after {
 		<-at.Done()
-		if errors.Is(at.Err(), ErrSkipped) {
-			t.err = ErrSkipped
-			return
-		}
 	}
 
 	if t.config.interceptor != nil {
