@@ -138,11 +138,13 @@ func (app *App) Run() (code int) {
 	case c := <-initResult:
 		if c != 0 {
 			resultChan = nil
+			app.skipMain()
 			return c
 		}
 	case <-app.config.sigChan:
 		signalCount++
 		cancelInit()
+		app.skipMain()
 		return 0
 	}
 
@@ -173,6 +175,12 @@ func signalCode(sig os.Signal) int {
 
 func (app *App) init(ctx context.Context) <-chan int {
 	return app.runTask(ctx, TaskTypeInit)
+}
+
+func (app *App) skipMain() {
+	for _, t := range app.tasks[TaskTypeMain] {
+		t.skip()
+	}
 }
 
 func (app *App) main(ctx context.Context) <-chan int {

@@ -2,6 +2,7 @@ package appmain
 
 import (
 	"context"
+	"errors"
 	"fmt"
 )
 
@@ -83,6 +84,11 @@ func (t *task) Err() error {
 	return t.err
 }
 
+func (t *task) skip() {
+	t.err = ErrSkipped
+	close(t.done)
+}
+
 func (t *task) run(ctx context.Context) {
 	defer func() {
 		if r := recover(); r != nil && t.err == nil {
@@ -93,6 +99,10 @@ func (t *task) run(ctx context.Context) {
 
 	for _, at := range t.config.after {
 		<-at.Done()
+		if errors.Is(at.Err(), ErrSkipped) {
+			t.err = ErrSkipped
+			return
+		}
 	}
 
 	if t.config.interceptor != nil {
@@ -101,3 +111,5 @@ func (t *task) run(ctx context.Context) {
 		t.err = t.task(ctx)
 	}
 }
+
+var ErrSkipped = errors.New("skipped")
