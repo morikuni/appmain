@@ -80,7 +80,7 @@ func (app *App) SendSignal(sig os.Signal) {
 //   os.Exit(app.Run())
 func (app *App) Run() (code int) {
 	var (
-		resultChan  <-chan int
+		resultChan  <-chan Decision
 		signalCount int
 	)
 	defer func() {
@@ -91,9 +91,9 @@ func (app *App) Run() (code int) {
 
 		if resultChan != nil {
 			select {
-			case c := <-resultChan:
-				if c != 0 && code != 0 {
-					code = c
+			case d := <-resultChan:
+				if code == 0 {
+					code = d.statusCode()
 				}
 			case sig := <-app.config.sigChan:
 				if code == 0 {
@@ -110,17 +110,15 @@ func (app *App) Run() (code int) {
 
 		for {
 			select {
-			case c := <-cleanupResult:
-				if c != 0 && code == 0 {
-					code = c
+			case d := <-cleanupResult:
+				if code == 0 {
+					code = d.statusCode()
 				}
 				return
 			case sig := <-app.config.sigChan:
 				signalCount++
 				if signalCount >= 2 {
-					if code == 0 {
-						code = signalCode(sig)
-					}
+					code = signalCode(sig)
 					return
 				}
 				cancelCleanup()
@@ -135,11 +133,11 @@ func (app *App) Run() (code int) {
 	resultChan = initResult
 
 	select {
-	case c := <-initResult:
-		if c != 0 {
+	case d := <-initResult:
+		if d != Continue {
 			resultChan = nil
 			app.skipMain()
-			return c
+			return d.statusCode()
 		}
 	case <-app.config.sigChan:
 		signalCount++
@@ -154,9 +152,9 @@ func (app *App) Run() (code int) {
 	resultChan = mainResult
 
 	select {
-	case c := <-mainResult:
+	case d := <-mainResult:
 		resultChan = nil
-		return c
+		return d.statusCode()
 	case <-app.config.sigChan:
 		signalCount++
 		cancelMain()
@@ -173,7 +171,7 @@ func signalCode(sig os.Signal) int {
 	return 1
 }
 
-func (app *App) init(ctx context.Context) <-chan int {
+func (app *App) init(ctx context.Context) <-chan Decision {
 	return app.runTask(ctx, TaskTypeInit)
 }
 
@@ -183,15 +181,15 @@ func (app *App) skipMain() {
 	}
 }
 
-func (app *App) main(ctx context.Context) <-chan int {
+func (app *App) main(ctx context.Context) <-chan Decision {
 	return app.runTask(ctx, TaskTypeMain)
 }
 
-func (app *App) cleanup(ctx context.Context) <-chan int {
+func (app *App) cleanup(ctx context.Context) <-chan Decision {
 	return app.runTask(ctx, TaskTypeCleanup)
 }
 
-func (app *App) runTask(ctx context.Context, tt TaskType) <-chan int {
+func (app *App) runTask(ctx context.Context, tt TaskType) <-chan Decision {
 	tasks := app.tasks[tt]
 	ctx, cancel := context.WithCancel(ctx)
 
@@ -204,24 +202,24 @@ func (app *App) runTask(ctx context.Context, tt TaskType) <-chan int {
 		}()
 	}
 
-	result := make(chan int, 1)
+	result := make(chan Decision, 1)
 	go func() {
 		defer cancel()
 
-		var code int
+		decision := Continue
 		for i := 0; i < len(tasks); i++ {
 			tc := <-doneTCs
 			err := tc.Err()
 			if err != nil {
-				decision := app.config.errorStrategy(tc)
-				if decision == Exit && code == 0 {
-					code = 1
+				d := app.config.errorStrategy(tc)
+				if d != Continue && decision == Continue {
 					cancel()
+					decision = d
 				}
 			}
 		}
 
-		result <- code
+		result <- decision
 	}()
 
 	return result

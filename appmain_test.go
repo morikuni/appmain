@@ -2,6 +2,7 @@ package appmain
 
 import (
 	"context"
+	"errors"
 	"os"
 	"reflect"
 	"sync/atomic"
@@ -192,7 +193,12 @@ func runApp(runner func(*App) int) (int, ResultSet, time.Duration) {
 		}
 	}
 
-	app := New()
+	app := New(ErrorStrategy(func(tc TaskContext) Decision {
+		if errors.Is(tc.Err(), context.Canceled) {
+			return Continue
+		}
+		return DefaultErrorStrategy(tc)
+	}))
 	var (
 		nInit int32
 		sInit int32

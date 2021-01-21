@@ -56,9 +56,24 @@ type Decision int
 const (
 	// Continue indicates that keep running current tasks.
 	Continue Decision = iota
-	// Exit indicates that cancel current tasks.
+	// Shutdown indicates that cancel current tasks and exit with status success.
+	Shutdown
+	// Exit indicates that cancel current tasks and exit with status error.
 	Exit
 )
+
+func (d Decision) statusCode() int {
+	switch d {
+	case Continue:
+		return 0
+	case Shutdown:
+		return 0
+	case Exit:
+		return 1
+	default:
+		panic("unknown decision")
+	}
+}
 
 // ErrorStrategy is the option for the New function to decide how the App
 // performs when any tasks return an error. It is called only if

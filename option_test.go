@@ -36,10 +36,45 @@ func TestErrorStrategy_Continue(t *testing.T) {
 		return nil
 	})
 
-	app.Run()
+	code := app.Run()
 
+	equal(t, code, 0)
 	equal(t, errTCs, []TaskContext{main1, main2})
 	equal(t, count, int32(3))
+}
+
+func TestErrorStrategy_Shutdown(t *testing.T) {
+	var errTCs []TaskContext
+
+	app := New(ErrorStrategy(func(tc TaskContext) Decision {
+		errTCs = append(errTCs, tc)
+		return Shutdown
+	}))
+
+	var count int32
+	main1 := app.AddMainTask("", func(ctx context.Context) error {
+		atomic.AddInt32(&count, 1)
+		return errors.New("aaa")
+	})
+	main2 := app.AddMainTask("", func(ctx context.Context) error {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(1000 * time.Millisecond):
+		}
+		atomic.AddInt32(&count, 1)
+		return errors.New("aaa")
+	})
+	app.AddMainTask("", func(ctx context.Context) error {
+		atomic.AddInt32(&count, 1)
+		return nil
+	})
+
+	code := app.Run()
+
+	equal(t, code, 0)
+	equal(t, errTCs, []TaskContext{main1, main2})
+	equal(t, count, int32(2))
 }
 
 func TestErrorStrategy_Exit(t *testing.T) {
@@ -69,8 +104,9 @@ func TestErrorStrategy_Exit(t *testing.T) {
 		return nil
 	})
 
-	app.Run()
+	code := app.Run()
 
+	equal(t, code, 1)
 	equal(t, errTCs, []TaskContext{main1, main2})
 	equal(t, count, int32(2))
 }
